@@ -3247,7 +3247,7 @@ const stripePublic = Stripe('pk_test_51T5nNML9M0NoCCKJtNKb3VkUZZvpGK1u6FjCOW9toq
 async function initPayment(amount){
   showToast('💳 Lancement du paiement sécurisé — '+amount+'€...','s');
   try {
-    const res = await fetch('/.netlify/functions/create-checkout-session', {
+    const res = await fetch('/.netlify/functions/create-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount, origin: window.location.origin })
