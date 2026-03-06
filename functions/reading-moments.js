@@ -15,25 +15,28 @@ exports.handler = async (event) => {
   });
 
   try {
-    // Créer la table si elle n'existe pas
     await pool.query(`
       CREATE TABLE IF NOT EXISTS reading_moments (
-        id          TEXT PRIMARY KEY,
-        email       TEXT,
-        prenom      TEXT,
-        initials    TEXT,
-        avatar_bg   TEXT,
-        lieu        TEXT,
-        livre       TEXT,
-        photo       TEXT,        -- base64 image (peut être NULL)
-        ts          BIGINT,
-        created_at  TIMESTAMPTZ DEFAULT NOW()
+        id           TEXT PRIMARY KEY,
+        email        TEXT,
+        prenom       TEXT,
+        initials     TEXT,
+        avatar_bg    TEXT,
+        avatar_photo TEXT,
+        lieu         TEXT,
+        livre        TEXT,
+        photo        TEXT,
+        ville        TEXT,
+        ts           BIGINT,
+        created_at   TIMESTAMPTZ DEFAULT NOW()
       )
     `);
 
-    // GET — récupérer les moments des dernières 24h
+    await pool.query(`ALTER TABLE reading_moments ADD COLUMN IF NOT EXISTS avatar_photo TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE reading_moments ADD COLUMN IF NOT EXISTS ville TEXT`).catch(()=>{});
+
     if (event.httpMethod === 'GET') {
-      const since = Date.now() - 24 * 60 * 60 * 1000; // 24h
+      const since = Date.now() - 24 * 60 * 60 * 1000;
       const result = await pool.query(
         'SELECT * FROM reading_moments WHERE ts > $1 ORDER BY ts DESC LIMIT 30',
         [since]
@@ -45,31 +48,27 @@ exports.handler = async (event) => {
         prenom: r.prenom,
         initials: r.initials,
         avatarBg: r.avatar_bg,
+        avatarPhoto: r.avatar_photo || null,
         lieu: r.lieu,
         livre: r.livre,
         photo: r.photo,
+        ville: r.ville || '',
         ts: Number(r.ts)
       }));
       return { statusCode: 200, headers, body: JSON.stringify({ moments }) };
     }
 
-    // POST — publier un nouveau moment
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '{}');
-      const { id, email, prenom, initials, avatarBg, lieu, livre, photo, ts } = body;
+      const { id, email, prenom, initials, avatarBg, avatarPhoto, lieu, livre, photo, ville, ts } = body;
 
-      if (!lieu) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: 'lieu requis' }) };
-      }
+      if (!lieu) return { statusCode: 400, headers, body: JSON.stringify({ error: 'lieu requis' }) };
 
-      // Supprimer l'ancien moment du même utilisateur (1 moment actif par user)
-      if (email) {
-        await pool.query('DELETE FROM reading_moments WHERE email = $1', [email]);
-      }
+      if (email) await pool.query('DELETE FROM reading_moments WHERE email = $1', [email]);
 
       await pool.query(`
-        INSERT INTO reading_moments (id, email, prenom, initials, avatar_bg, lieu, livre, photo, ts)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO reading_moments (id, email, prenom, initials, avatar_bg, avatar_photo, lieu, livre, photo, ville, ts)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         ON CONFLICT (id) DO NOTHING
       `, [
         id || 'rm_' + Date.now(),
@@ -77,9 +76,11 @@ exports.handler = async (event) => {
         prenom || 'Anonyme',
         initials || '?',
         avatarBg || '#B8860B',
+        avatarPhoto || null,
         lieu,
         livre || '',
         photo || null,
+        ville || '',
         ts || Date.now()
       ]);
 
@@ -87,12 +88,9 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
     }
 
-    // DELETE — supprimer son moment (quand l'utilisateur arrête de partager)
     if (event.httpMethod === 'DELETE') {
       const body = JSON.parse(event.body || '{}');
-      if (!body.email) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: 'email requis' }) };
-      }
+      if (!body.email) return { statusCode: 400, headers, body: JSON.stringify({ error: 'email requis' }) };
       await pool.query('DELETE FROM reading_moments WHERE email = $1', [body.email]);
       await pool.end();
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
