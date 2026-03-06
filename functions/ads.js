@@ -29,7 +29,12 @@ exports.handler = async (event) => {
       )
     `);
 
-    // GET — pubs actives non expirées
+    await pool.query(`ALTER TABLE ads ADD COLUMN IF NOT EXISTS email TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE ads ADD COLUMN IF NOT EXISTS media_data TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE ads ADD COLUMN IF NOT EXISTS media_type TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE ads ADD COLUMN IF NOT EXISTS ts BIGINT`).catch(()=>{});
+    await pool.query(`ALTER TABLE ads ADD COLUMN IF NOT EXISTS expires_at BIGINT`).catch(()=>{});
+
     if (event.httpMethod === 'GET') {
       const now = Date.now();
       const result = await pool.query(
@@ -50,13 +55,11 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ ads }) };
     }
 
-    // POST — publier une pub
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '{}');
       const { id, email, text, mediaData, mediaType, link, ts, expiresAt } = body;
       if (!text || !link) return { statusCode: 400, headers, body: JSON.stringify({ error: 'text et link requis' }) };
 
-      // Supprimer l'ancienne pub du même utilisateur
       if (email) await pool.query('DELETE FROM ads WHERE email = $1', [email]);
 
       await pool.query(`
