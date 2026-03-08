@@ -538,8 +538,10 @@ button{border:none;border-radius:9px;padding:10px;cursor:pointer;font-weight:700
         </div>
         <div class="afg"><label class="afl">Email *</label><input class="afi" id="log-id" placeholder="jean@email.com" autocomplete="username"></div>
         <div class="afg" style="margin-bottom:4px;"><label class="afl">Mot de passe *</label><input class="afi" id="log-pwd" type="password" placeholder="Ton mot de passe" autocomplete="current-password"></div>
+        <div style="text-align:right;margin-bottom:10px;">
+          <span onclick="openForgotPassword()" style="font-size:12px;color:var(--gold);cursor:pointer;text-decoration:underline;">Mot de passe oublié ?</span>
+        </div>
         <button class="abtn abtn-gold" onclick="doLogin()">🔑 SE CONNECTER</button>
-        <button class="abtn abtn-out" style="margin-top:8px;" onclick="doGuestLogin()">👀 Continuer en visiteur</button>
         <div class="aswitch">Pas encore inscrit ? <span onclick="switchAuth('register')">Créer un compte</span></div>
       </div>
     </div>
@@ -837,7 +839,8 @@ button{border:none;border-radius:9px;padding:10px;cursor:pointer;font-weight:700
   </div>
 
   <!-- VIEWER STORY plein écran -->
-  <div id="story-viewer" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:#000;z-index:9999;flex-direction:column;align-items:center;justify-content:center;">
+  <div id="story-viewer" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;flex-direction:column;align-items:center;justify-content:center;">
+    <div id="story-inner" style="position:relative;width:100%;max-width:420px;height:100%;max-height:100vh;overflow:hidden;background:#000;">
     <!-- Barre de progression -->
     <div style="position:absolute;top:0;left:0;right:0;padding:12px 16px;z-index:10;">
       <div style="height:3px;background:rgba(255,255,255,.25);border-radius:2px;overflow:hidden;">
@@ -898,10 +901,38 @@ button{border:none;border-radius:9px;padding:10px;cursor:pointer;font-weight:700
       </div>
       <div style="position:absolute;bottom:20px;font-size:9px;color:rgba(255,215,0,.2);letter-spacing:.15em;text-transform:uppercase;font-weight:700;">BookShare ✦ Eurêka</div>
     </div>
+    </div><!-- /story-inner -->
     <!-- Navigation tap zones -->
     <div style="position:absolute;inset:0;display:flex;z-index:8;">
       <div style="flex:1;" onclick="prevStory()"></div>
       <div style="flex:1;" onclick="nextStory()"></div>
+    </div>
+  </div>
+
+  <!-- MODAL MOT DE PASSE OUBLIÉ -->
+  <div id="forgot-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--card);border-radius:18px;padding:28px 24px;width:100%;max-width:380px;border:1px solid rgba(255,215,0,.2);">
+      <div style="font-size:18px;font-weight:800;color:var(--txt);margin-bottom:6px;">🔑 Mot de passe oublié</div>
+      <div style="font-size:13px;color:var(--txt2);margin-bottom:18px;">Entre ton email et on t'envoie un lien de réinitialisation.</div>
+      <div id="forgot-err" style="color:#e74c3c;font-size:12px;margin-bottom:8px;display:none;"></div>
+      <div id="forgot-ok" style="color:#27ae60;font-size:12px;margin-bottom:8px;display:none;"></div>
+      <input id="forgot-email" class="fi" type="email" placeholder="ton@email.com" style="width:100%;margin-bottom:14px;">
+      <div style="display:flex;gap:10px;">
+        <button onclick="closeForgotPassword()" style="flex:1;padding:11px;border:1px solid var(--bdr);border-radius:10px;background:none;color:var(--txt2);cursor:pointer;font-size:13px;">Annuler</button>
+        <button onclick="sendResetEmail()" id="forgot-btn" style="flex:2;padding:11px;border:none;border-radius:10px;background:var(--gold);color:#1A0A00;font-weight:800;cursor:pointer;font-size:13px;">Envoyer le lien →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NOUVEAU MOT DE PASSE -->
+  <div id="newpwd-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--card);border-radius:18px;padding:28px 24px;width:100%;max-width:380px;border:1px solid rgba(255,215,0,.2);">
+      <div style="font-size:18px;font-weight:800;color:var(--txt);margin-bottom:6px;">🔒 Nouveau mot de passe</div>
+      <div style="font-size:13px;color:var(--txt2);margin-bottom:18px;">Choisis un nouveau mot de passe pour ton compte.</div>
+      <div id="newpwd-err" style="color:#e74c3c;font-size:12px;margin-bottom:8px;display:none;"></div>
+      <input id="newpwd-input" class="fi" type="password" placeholder="Nouveau mot de passe (min. 6 car.)" style="width:100%;margin-bottom:10px;">
+      <input id="newpwd-confirm" class="fi" type="password" placeholder="Confirmer le mot de passe" style="width:100%;margin-bottom:14px;">
+      <button onclick="submitNewPassword()" style="width:100%;padding:13px;border:none;border-radius:10px;background:var(--gold);color:#1A0A00;font-weight:800;cursor:pointer;font-size:14px;">✅ Enregistrer mon mot de passe</button>
     </div>
   </div>
 
@@ -2592,7 +2623,7 @@ function calcAge(dob){
   return age;
 }
 
-function doRegister(){
+async function doRegister(){
   const nom=document.getElementById('reg-nom').value.trim();
   const prenom=document.getElementById('reg-prenom').value.trim();
   const ville=document.getElementById('reg-ville').value.trim();
@@ -2614,15 +2645,27 @@ function doRegister(){
   if(users.find(u=>u.email===email)) return showAuthErr('aerr-reg','❌ Cet email est déjà utilisé. Connecte-toi.');
 
   const user={nom,prenom,ville,email,pwd,joined:new Date().toISOString()};
+
+  // ── Vérifier sur Neon si l'email existe déjà ──
+  try {
+    const res = await fetch('/.netlify/functions/login-user', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(user)
+    });
+    const data = await res.json();
+    if(data.error === 'email_exists'){
+      return showAuthErr('aerr-reg','❌ Cet email est déjà utilisé. Connecte-toi.');
+    }
+  } catch(e){
+    console.warn('Neon register check:', e);
+  }
+
   users.push(user);
   localStorage.setItem('bs_users',JSON.stringify(users));
-  // Compatible avec l'ancienne clé bs_user et la nouvelle bs_current
   localStorage.setItem('bs_user',JSON.stringify(user));
   localStorage.setItem('bs_current',JSON.stringify(user));
   currentUser=user;
-
-  // ── Sync Neon — sauvegarder le nouvel utilisateur ──
-  syncUserToNeon(user);
 
   // Masquer auth, afficher app directement
   document.getElementById('auth-screen').style.display='none';
@@ -2635,7 +2678,6 @@ function doRegister(){
     if(!localStorage.getItem('bs_onboarding_done')) setTimeout(showOnboardingInterests, 1500);
   },400);
 
-  // Send welcome email
   sendWelcomeEmail(prenom, email);
 }
 
@@ -2895,6 +2937,122 @@ async function handleGoogleResponse(response){
 }
 
 // ═══ WELCOME EMAIL via Resend ═══
+
+// ═══ MOT DE PASSE OUBLIÉ ═══
+let _resetEmail = '', _resetToken = '';
+
+function openForgotPassword(){
+  document.getElementById('forgot-modal').style.display = 'flex';
+  document.getElementById('forgot-err').style.display = 'none';
+  document.getElementById('forgot-ok').style.display = 'none';
+  document.getElementById('forgot-email').value = '';
+}
+
+function closeForgotPassword(){
+  document.getElementById('forgot-modal').style.display = 'none';
+}
+
+async function sendResetEmail(){
+  const email = document.getElementById('forgot-email').value.trim();
+  const errEl = document.getElementById('forgot-err');
+  const okEl = document.getElementById('forgot-ok');
+  const btn = document.getElementById('forgot-btn');
+
+  errEl.style.display = 'none';
+  okEl.style.display = 'none';
+
+  if(!email || !email.includes('@')){
+    errEl.textContent = '❌ Email invalide.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.textContent = '⏳ Envoi...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/.netlify/functions/reset-password', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+    if(data.error === 'google_account'){
+      errEl.textContent = '🔵 Tu t\'es inscrit avec Google. Utilise le bouton "Continuer avec Google" pour te connecter.';
+      errEl.style.display = 'block';
+      btn.textContent = 'Envoyer le lien →';
+      btn.disabled = false;
+      return;
+    }
+    okEl.textContent = '✅ Si cet email existe, tu recevras un lien dans quelques secondes.';
+    okEl.style.display = 'block';
+    btn.textContent = 'Envoyé ✓';
+  } catch(e){
+    errEl.textContent = '❌ Erreur réseau. Réessaie.';
+    errEl.style.display = 'block';
+    btn.textContent = 'Envoyer le lien →';
+    btn.disabled = false;
+  }
+}
+
+async function submitNewPassword(){
+  const pwd = document.getElementById('newpwd-input').value;
+  const confirm = document.getElementById('newpwd-confirm').value;
+  const errEl = document.getElementById('newpwd-err');
+
+  errEl.style.display = 'none';
+
+  if(pwd.length < 6){
+    errEl.textContent = '❌ Minimum 6 caractères.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if(pwd !== confirm){
+    errEl.textContent = '❌ Les mots de passe ne correspondent pas.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch('/.netlify/functions/update-password', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email: _resetEmail, token: _resetToken, newPwd: pwd })
+    });
+    const data = await res.json();
+    if(data.error === 'token_invalid') {
+      errEl.textContent = '❌ Lien invalide.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if(data.error === 'token_expired') {
+      errEl.textContent = '❌ Lien expiré. Recommence depuis "Mot de passe oublié".';
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('newpwd-modal').style.display = 'none';
+    // Nettoyer l'URL
+    window.history.replaceState({}, document.title, '/');
+    showToast('✅ Mot de passe mis à jour ! Connecte-toi.', 's');
+    switchAuth('login');
+  } catch(e){
+    errEl.textContent = '❌ Erreur réseau. Réessaie.';
+    errEl.style.display = 'block';
+  }
+}
+
+// Vérifier si un token reset est dans l'URL au chargement
+function checkResetToken(){
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('reset_token');
+  const email = params.get('email');
+  if(token && email){
+    _resetToken = token;
+    _resetEmail = decodeURIComponent(email);
+    document.getElementById('newpwd-modal').style.display = 'flex';
+  }
+}
+
 function sendWelcomeEmail(prenom, email){
   fetch('/.netlify/functions/send-welcome-email', {
     method: 'POST',
@@ -3017,6 +3175,7 @@ async function syncPasswordToNeon(email, newPwd){
 window.addEventListener('DOMContentLoaded',()=>{
   // Initialize Google Sign-In
   initGoogleSignIn();
+  checkResetToken();
 
   const saved=localStorage.getItem('bs_current');
   if(saved){
@@ -3032,13 +3191,12 @@ window.addEventListener('DOMContentLoaded',()=>{
       renderNotifications();
       renderHomeFeed();
       renderExploreFeed();
-    },600);
+    },300);
   } else {
-    // Pas d'utilisateur connecté — afficher le feed en mode public
+    // Pas d'utilisateur connecté — forcer l'inscription
     document.getElementById('charte').style.display='none';
-    updateHeaderForAuth(false);
-    renderHomeFeed();
-    renderExploreFeed();
+    document.getElementById('auth-screen').style.display='flex';
+    switchAuth('register');
   }
 });
 
@@ -5965,8 +6123,23 @@ function deletePost(id){
   if(!confirm('Supprimer cette publication ?')) return;
   const idx = DB.posts.findIndex(p=>p.id===id);
   if(idx>=0) DB.posts.splice(idx,1);
+  saveDB();
+
+  // Supprimer sur Neon
+  fetch('/.netlify/functions/posts', {
+    method: 'DELETE',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ id })
+  }).then(() => {
+    // Mettre à jour les stats profil
+    const myPosts = DB.posts.filter(p => p.email === currentUser?.email);
+    syncPublicStats();
+    if(currentUser) currentUser.publications = myPosts.length;
+  }).catch(()=>{});
+
   renderMyPosts(getMyPosts());
   renderFeed();
+  renderProfile();
   showToast('🗑 Publication supprimée');
 }
 
@@ -6223,11 +6396,7 @@ function buildFeedCard(p){
   
   html.push('<div class="fptext">« '+texteAffiche+listeBtn+' »</div>');
   html.push('<div class="fpact">');
-  if(isGuest){
-    html.push('<button class="eu" id="eubtn_'+p.id+'" onclick="event.stopPropagation();document.getElementById(\'auth-screen\').style.display=\'flex\';switchAuth(\'register\')"><span style="font-size:12px;">⚡</span>Eurêka</button>');
-  } else {
-    html.push('<button class="eu'+(euStates[p.id]?' fired':'')+'" id="eubtn_'+p.id+'" onclick="event.stopPropagation();toggleLike(\''+p.id+'\')"><span style="font-size:12px;">⚡</span>Eurêka</button>');
-  }
+  html.push('<button class="eu'+(euStates[p.id]?' fired':'')+'" id="eubtn_'+p.id+'" onclick="event.stopPropagation();if(!currentUser||!currentUser.email){document.getElementById(\'auth-screen\').style.display=\'flex\';switchAuth(\'login\');}else{toggleLike(\''+p.id+'\')}">'+'<span style="font-size:12px;">⚡</span>Eurêka</button>');
   html.push('<span style="font-size:11px;color:var(--gold);font-weight:600;" id="euc_'+p.id+'">'+p.eu+'</span>');
   html.push('<button class="fpab" id="commbtn_'+p.id+'" onclick="event.stopPropagation();toggleInlineComments(\''+p.id+'\')">💬 <span id="commc_'+p.id+'">'+commCount+'</span></button>');
   html.push('<button class="fpab" onclick="event.stopPropagation();openShareWithContext(\''+p.titre.replace(/'/g,"\\'")+'\'\,\''+shareMsg.replace(/'/g,"\\'")+'\')">↗️</button>');
@@ -6278,11 +6447,7 @@ function _renderHomeFeedOLD(){
   
   html.push('<div class="fptext">« '+texteAffiche+listeBtn+' »</div>');
   html.push('<div class="fpact">');
-  if(isGuest){
-    html.push('<button class="eu" id="eubtn_'+p.id+'" onclick="event.stopPropagation();document.getElementById(\'auth-screen\').style.display=\'flex\';switchAuth(\'register\')"><span style="font-size:12px;">⚡</span>Eurêka</button>');
-  } else {
-    html.push('<button class="eu'+(euStates[p.id]?' fired':'')+'" id="eubtn_'+p.id+'" onclick="event.stopPropagation();toggleLike(\''+p.id+'\')"><span style="font-size:12px;">⚡</span>Eurêka</button>');
-  }
+  html.push('<button class="eu'+(euStates[p.id]?' fired':'')+'" id="eubtn_'+p.id+'" onclick="event.stopPropagation();if(!currentUser||!currentUser.email){document.getElementById(\'auth-screen\').style.display=\'flex\';switchAuth(\'login\');}else{toggleLike(\''+p.id+'\')}">'+'<span style="font-size:12px;">⚡</span>Eurêka</button>');
   html.push('<span style="font-size:11px;color:var(--gold);font-weight:600;" id="euc_'+p.id+'">'+p.eu+'</span>');
   html.push('<button class="fpab" onclick="event.stopPropagation();toggleInlineComments(\''+p.id+'\')">💬 <span id="commc_'+p.id+'">'+commCount+'</span></button>');
   html.push('<button class="fpab" onclick="event.stopPropagation();openShareWithContext(\''+p.titre.replace(/'/g,"\\'")+'\'\,\''+shareMsg.replace(/'/g,"\\'")+'\')">↗️</button>');
@@ -8122,8 +8287,6 @@ function applyTranslations(){
   const logBtn=document.querySelector('#af-login .abtn-gold');
   if(logBtn) logBtn.textContent=T['auth-login-btn'];
 
-  const guestBtn=document.querySelector('#af-login .abtn-out');
-  if(guestBtn) guestBtn.textContent=T['auth-guest'];
 
   // Auth switches
   const regSwitch=document.querySelector('#af-register .aswitch');
