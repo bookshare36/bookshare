@@ -5792,7 +5792,14 @@ function setupFeedScroll(){
   const sentinel = document.getElementById('feed-sentinel');
   if(sentinel) window._feedObserver.observe(sentinel);
 }
-
+const catIcons = {
+  'livre': '📚',
+  'film': '🎬',
+  'serie': '📺',
+  'musique': '🎵',
+  'these': '🎓',
+  'presse': '📰'
+};
 function buildFeedCard(p){
 
     const commCount = (DB.comments[p.id]||[]).length;
