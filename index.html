@@ -4774,56 +4774,74 @@ function closeChat(){
   document.getElementById('dmlv').style.display='block';
   document.getElementById('dmcv').style.display='none';
 }
-// ═══ COMMENTAIRES ═══
-function sendComm(){
-  if(!currentUser || !currentUser.email){ showToast('Connecte-toi pour commenter','e'); return; }
-  const inp = document.getElementById('cinput');
-  const val = inp.value.trim();
-  if(!val) return;
+function sendComm() {
+  // 1. On vérifie qu'on sait sur quel post on commente
+  if (typeof currentCommPostId === 'undefined' || !currentCommPostId) return;
 
-  const postId = currentCommPostId;
-  if(!postId) return;
+  // 2. On vérifie que l'utilisateur est connecté et a écrit quelque chose
+  if (typeof requireAuth === 'function' && !requireAuth()) return;
+  const user = currentUser;
+  if (!user) {
+    if(typeof showToast === 'function') showToast('Connecte-toi pour commenter', 'e');
+    return;
+  }
 
-  // Créer le commentaire
-  const comm = {
-    id: 'c_'+Date.now(),
-    postId,
-    prenom: currentUser.prenom || 'Anonyme',
-    nom: currentUser.nom || '',
-    initials: (currentUser.prenom?.[0]||'?')+(currentUser.nom?.[0]||''),
-    avatarBg: currentUser.avatarBg || 'linear-gradient(135deg,var(--amber),var(--gold))',
-    email: currentUser.email,
-    texte: val,
+  const input = document.getElementById('cinput');
+  const texte = input ? input.value.trim() : '';
+  if (!texte) return; // Si c'est vide, on ne fait rien
+
+  // 3. On fabrique le petit paquet de données pour le commentaire
+  const newComm = {
+    id: 'c_' + Date.now(),
+    postId: currentCommPostId,
+    email: user.email,
+    prenom: user.prenom || user.pseudo || 'Anonyme',
+    nom: user.nom || '',
+    initials: (user.prenom ? user.prenom[0] : '?') + (user.nom ? user.nom[0] : ''),
+    avatarBg: user.avatarBg || 'linear-gradient(135deg,var(--amber),var(--gold))',
+    texte: texte,
     ts: Date.now()
   };
 
-  // Sauvegarder en local
-  if(!DB.comments[postId]) DB.comments[postId] = [];
-  DB.comments[postId].push(comm);
-  saveDB();
+  // 4. On sauvegarde immédiatement en mémoire locale (Optimistic UI)
+  DB.comments = DB.comments || {};
+  if (!DB.comments[currentCommPostId]) {
+    DB.comments[currentCommPostId] = [];
+  }
+  DB.comments[currentCommPostId].push(newComm);
+  
+  if (typeof saveDB === 'function') saveDB();
 
-  // Mettre à jour compteur dans le feed
-  const count = DB.comments[postId].length;
-  document.querySelectorAll('[id^="commc_"]').forEach(el=>{
-    if(el.id === 'commc_'+postId) el.textContent = count;
+  // 5. On met à jour l'écran et les compteurs instantanément
+  if (typeof renderComments === 'function') renderComments(currentCommPostId);
+  
+  const count = DB.comments[currentCommPostId].length;
+  const countModal = document.getElementById('comm-count');
+  if (countModal) countModal.textContent = '(' + count + ')';
+  
+  document.querySelectorAll('[id^="commc_"]').forEach(el => {
+    if (el.id === 'commc_' + currentCommPostId) el.textContent = count;
   });
 
-  // Réafficher les commentaires
-  renderComments(postId);
+  // On vide le champ de texte pour faire propre
+  if (input) input.value = '';
 
-  // Mettre à jour le compteur dans le header du modal
-  document.getElementById('comm-count').textContent = '('+count+')';
-
-  inp.value = '';
-
-  // Envoyer à Neon en arrière-plan
+  // 6. Le plus important : on l'envoie pour de bon à Neon ! 🚀
   fetch('/.netlify/functions/comments', {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(comm)
-  }).catch(()=>{});
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newComm)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error && typeof showToast === 'function') {
+      showToast('Erreur: ' + data.error, 'e');
+    }
+  })
+  .catch(err => {
+    console.error("Erreur d'envoi du commentaire:", err);
+  });
 }
-
 function renderComments(postId){
   const list = document.getElementById('comm-list');
   if(!list) return;
