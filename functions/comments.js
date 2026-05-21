@@ -15,6 +15,7 @@ exports.handler = async (event) => {
   });
 
   try {
+    // 1. Création de la table de base
     await pool.query(`
       CREATE TABLE IF NOT EXISTS comments (
         id         TEXT PRIMARY KEY,
@@ -29,47 +30,65 @@ exports.handler = async (event) => {
       )
     `);
 
-    // Ajouter avatar_bg si la table existait sans cette colonne
+    // 2. Ajout automatique des colonnes pour correspondre à ton site
     await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS avatar_bg TEXT`);
     await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS email TEXT`);
+    await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS prenom TEXT`);
+    await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS nom TEXT`);
 
-    // GET — récupérer les commentaires d'un post
+    // 3. GET — récupérer les commentaires d'un post
     if (event.httpMethod === 'GET') {
       const postId = event.queryStringParameters?.postId;
       if (!postId) return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId requis' }) };
-      const result = await pool.query(
-        'SELECT * FROM comments WHERE post_id=$1 ORDER BY ts ASC',
-        [postId]
-      );
+      
+      const result = await pool.query('SELECT * FROM comments WHERE post_id=$1 ORDER BY ts ASC', [postId]);
       await pool.end();
-      return { statusCode: 200, headers, body: JSON.stringify({ comments: result.rows }) };
+      
+      // TRADUCTION DE NEON VERS TON SITE
+      const comments = result.rows.map(row => ({
+        id: row.id,
+        postId: row.post_id,
+        email: row.email,
+        prenom: row.prenom || row.auteur || 'Anonyme',
+        nom: row.nom || '',
+        initials: row.initials,
+        avatarBg: row.avatar_bg,
+        texte: row.texte,
+        ts: Number(row.ts)
+      }));
+
+      return { statusCode: 200, headers, body: JSON.stringify({ comments }) };
     }
 
-    // POST — ajouter un commentaire
+    // 4. POST — ajouter un commentaire
     if (event.httpMethod === 'POST') {
-      const { id, postId, email, auteur, initials, avatarBg, texte, ts } = JSON.parse(event.body || '{}');
-      if (!postId || !texte) return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId et texte requis' }) };
+      const body = JSON.parse(event.body || '{}');
+      
+      if (!body.postId || !body.texte) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId et texte requis' }) };
+      }
 
       await pool.query(`
-        INSERT INTO comments (id, post_id, email, auteur, initials, avatar_bg, texte, ts)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO comments (id, post_id, email, prenom, nom, initials, avatar_bg, texte, ts)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (id) DO NOTHING
       `, [
-        id || 'c_'+Date.now(),
-        postId,
-        email || '',
-        auteur || '',
-        initials || '?',
-        avatarBg || '',
-        texte,
-        ts || Date.now()
+        body.id || 'c_' + Date.now(),
+        body.postId,
+        body.email || '',
+        body.prenom || 'Anonyme',
+        body.nom || '',
+        body.initials || '?',
+        body.avatarBg || '',
+        body.texte,
+        body.ts || Date.now()
       ]);
 
       await pool.end();
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
     }
 
-    // DELETE — supprimer un commentaire
+    // 5. DELETE — supprimer un commentaire
     if (event.httpMethod === 'DELETE') {
       const { id } = JSON.parse(event.body || '{}');
       if (!id) return { statusCode: 400, headers, body: JSON.stringify({ error: 'id requis' }) };
