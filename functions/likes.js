@@ -4,6 +4,7 @@ exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', // <-- LA CLÉ EST ICI !
     'Content-Type': 'application/json',
   };
 
@@ -27,7 +28,10 @@ exports.handler = async (event) => {
     // GET — récupérer les likes d'un post
     if (event.httpMethod === 'GET') {
       const postId = event.queryStringParameters?.postId;
-      if (!postId) return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId requis' }) };
+      if (!postId) {
+        await pool.end();
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId requis' }) };
+      }
       const result = await pool.query('SELECT email FROM likes WHERE post_id = $1', [postId]);
       await pool.end();
       return { statusCode: 200, headers, body: JSON.stringify({ likes: result.rows.map(r=>r.email), count: result.rows.length }) };
@@ -36,10 +40,14 @@ exports.handler = async (event) => {
     // POST — ajouter ou retirer un like (toggle)
     if (event.httpMethod === 'POST') {
       const { postId, email } = JSON.parse(event.body || '{}');
-      if (!postId || !email) return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId et email requis' }) };
+      if (!postId || !email) {
+        await pool.end();
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId et email requis' }) };
+      }
 
       const existing = await pool.query('SELECT 1 FROM likes WHERE post_id=$1 AND email=$2', [postId, email]);
       let liked;
+      
       if (existing.rows.length > 0) {
         await pool.query('DELETE FROM likes WHERE post_id=$1 AND email=$2', [postId, email]);
         await pool.query('UPDATE posts SET eu = GREATEST(0, eu - 1) WHERE id=$1', [postId]);
@@ -60,7 +68,7 @@ exports.handler = async (event) => {
 
   } catch (err) {
     console.error('likes error:', err.message);
-    await pool.end().catch(()=>{});
+    try { await pool.end(); } catch(e) {} // Fermeture sécurisée
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
