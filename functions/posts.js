@@ -4,7 +4,7 @@ exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', // <-- J'AI AJOUTÉ DELETE ICI !
     'Content-Type': 'application/json',
   };
 
@@ -16,7 +16,7 @@ exports.handler = async (event) => {
   });
 
   try {
-    // 1. Création de la table (Ce que tu avais déjà)
+    // 1. Création de la table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS posts (
         id           TEXT PRIMARY KEY,
@@ -39,16 +39,16 @@ exports.handler = async (event) => {
       )
     `);
 
-    // 2. ENREGISTRER UN NOUVEAU POST (La partie qui manquait !)
+    // 2. ENREGISTRER UN NOUVEAU POST
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '{}');
-      const p = body.post; // C'est la boîte _pendingPost envoyée par index.html
+      const p = body.post;
 
       if (!p || !p.id) {
+        await pool.end();
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Post invalide' }) };
       }
 
-      // On insère les données du post dans les colonnes Neon
       await pool.query(`
         INSERT INTO posts (id, type, titre, meta, texte, type_badge, specific_metas, note, ts, auteur, initials, avatar_bg, email, ville, eu, likes)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
@@ -66,12 +66,11 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
     }
 
-    // 3. LIRE TOUS LES POSTS (L'autre partie qui manquait !)
+    // 3. LIRE TOUS LES POSTS
     if (event.httpMethod === 'GET') {
       const result = await pool.query('SELECT * FROM posts ORDER BY ts DESC LIMIT 100');
       await pool.end();
       
-      // On prépare les posts pour que index.html les lise parfaitement
       const posts = result.rows.map(row => ({
         id: row.id,
         type: row.type,
@@ -94,11 +93,26 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ posts }) };
     }
 
+    // 4. SUPPRIMER UN POST (LE DESTRUCTEUR DE ZOMBIES 🧟‍♂️🔫)
+    if (event.httpMethod === 'DELETE') {
+      const body = JSON.parse(event.body || '{}');
+      if (!body.id) {
+        await pool.end();
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'ID manquant' }) };
+      }
+
+      await pool.query('DELETE FROM posts WHERE id = $1', [body.id]);
+      await pool.end();
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true }) };
+    }
+
+    // Si on arrive ici, c'est une méthode bizarre
+    await pool.end();
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Méthode non autorisée' }) };
 
   } catch (err) {
     console.error('posts error:', err.message);
-    await pool.end().catch(() => {});
+    try { await pool.end(); } catch(e) {}
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
