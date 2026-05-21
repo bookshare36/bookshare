@@ -4054,22 +4054,34 @@ function publishPost(){
     videoUrl: _importedVideoData || null,
     eu: 0, likes: []
   };
-
-  // Publier directement
+// Publier directement
   DB.posts.unshift(window._pendingPost);
   saveDB();
-  syncPostToNeon(window._pendingPost);
+  
+  // On met le post de côté le temps de l'envoyer
+  const postToSync = window._pendingPost;
   window._pendingPost = null;
 
+  // On nettoie les cases du formulaire
   ['txt-resume','bib-titre','bib-auteur','bib-annee','film-titre','film-real','serie-titre','music-song','music-artist'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   window._lastTexte = '';
-  renderHomeFeed();
-  renderProfile();
+
+  // On redirige vers l'accueil et on affiche le succès
   showPage('home');
   showToast('🎉 Publication réussie !','s');
+
+  // LA MAGIE EST ICI : On envoie à Neon, on attend, on télécharge la base à jour, et SEULEMENT LA on réaffiche !
+  syncPostToNeon(postToSync).then(() => {
+    loadPostsFromNeon().then(() => {
+      renderHomeFeed();
+      renderProfile();
+      if (typeof renderExploreFeed === 'function') renderExploreFeed();
+    });
+  });
 }
+ 
 
 function saveDraft(){
   showToast('💾 Brouillon sauvegardé !','s');
