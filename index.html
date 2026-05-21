@@ -6087,35 +6087,44 @@ function shareRead(){
 }
 // ═══ COMMENTAIRES DYNAMIQUES ═══
 let currentCommPostId = null;
+function openCommModal(postId) {
+  try {
+    currentCommPostId = postId || currentCommPostId || 'p1';
+    
+    // On lance le téléchargement si la fonction existe
+    if (typeof loadCommentsFromNeon === 'function') {
+      loadCommentsFromNeon(currentCommPostId);
+    }
+    
+    // On dessine les commentaires si la fonction existe
+    if (typeof renderComments === 'function') {
+      renderComments(currentCommPostId);
+    }
 
-function openCommModal(postId){
-  currentCommPostId = postId || currentCommPostId || 'p1';
-  
-  // 1. On lance le téléchargement avec Neon (qui mettra à jour l'écran tout seul !)
-  loadCommentsFromNeon(currentCommPostId);
-  
-  // 2. En attendant que Neon réponde (ça prend 0.5s), on affiche ce qu'on a déjà en mémoire
-  renderComments(currentCommPostId);
+    // Mise à jour du compteur
+    const comms = (typeof DB !== 'undefined' && DB.comments && DB.comments[currentCommPostId]) ? DB.comments[currentCommPostId] : [];
+    const countEl = document.getElementById('comm-count');
+    if (countEl) countEl.textContent = '(' + comms.length + ')';
 
-  // 3. On met à jour le compteur dans le titre de la fenêtre
-  const comms = DB.comments[currentCommPostId] || [];
-  const countEl = document.getElementById('comm-count');
-  if (countEl) countEl.textContent = '(' + comms.length + ')';
+    // Sécurité pour l'avatar utilisateur
+    if (typeof currentUser !== 'undefined' && currentUser) {
+      const av = document.getElementById('comm-av-me');
+      if (av) av.textContent = (currentUser.prenom ? currentUser.prenom[0] : '?') + (currentUser.nom ? currentUser.nom[0] : '');
+    }
 
-  // 4. On met l'initiale de l'utilisateur sur sa petite bulle de saisie
-  if(currentUser){
-    const av = document.getElementById('comm-av-me');
-    if(av) av.textContent = (currentUser.prenom ? currentUser.prenom[0] : '?') + (currentUser.nom ? currentUser.nom[0] : '');
-  }
-
-  // 5. On affiche la fenêtre à l'écran !
-  if (typeof openModal === 'function') {
-    openModal('comm-modal');
-  } else {
-    const modal = document.getElementById('comm-modal');
-    if (modal) modal.style.display = 'flex';
+    // Affichage de la fenêtre
+    if (typeof openModal === 'function') {
+      openModal('comm-modal');
+    } else {
+      const modal = document.getElementById('comm-modal');
+      if (modal) modal.style.display = 'flex';
+    }
+  } catch (erreur) {
+    // C'EST ICI LA MAGIE : Ça va afficher une alerte avec le problème exact !
+    alert("On a trouvé le bug : " + erreur.message);
   }
 }
+
 function sendComm(){
   const inp=document.getElementById('cinput'), val=inp.value.trim();
   if(!val||!currentCommPostId) return;
