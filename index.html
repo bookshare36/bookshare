@@ -3733,8 +3733,11 @@ function showToast(msg,type=''){
 // Petit cadenas pour empêcher le spam de clics
 let _likeInFlight = _likeInFlight || {};
 
+// Petit cadenas pour empêcher le spam de clics
+_likeInFlight = typeof _likeInFlight !== 'undefined' ? _likeInFlight : {};
+
 function toggleLike(postId) {
-  // 1. Vérifications de base (être connecté)
+  // 1. Vérifications de base
   if (typeof requireAuth === 'function' && !requireAuth()) return;
   const userEmail = currentUser?.email;
   if (!userEmail) { 
@@ -3742,131 +3745,96 @@ function toggleLike(postId) {
     return; 
   }
 
-  // 2. Si un like est déjà en cours d'envoi, on bloque
+  // 2. Cadenas anti-spam
   if (_likeInFlight[postId]) return;
   _likeInFlight[postId] = true;
 
-  // 3. Mise à jour locale immédiate (Optimistic UI - ton super code !)
+  // 3. Mise à jour locale immédiate (Optimistic UI)
   const p = DB.posts.find(x => x.id === postId);
+  let isNowLiked = false;
+  
   if (p) {
     if (typeof euStates !== 'undefined') {
       if (euStates[postId]) {
         euStates[postId] = false;
         p.eu = Math.max(0, (p.eu || 0) - 1);
+        isNowLiked = false;
       } else {
         euStates[postId] = true;
         p.eu = (p.eu || 0) + 1;
+        isNowLiked = true;
       }
     }
     
-    // On sauvegarde en mémoire locale
-    saveDB(); 
+    // Sauvegarde en mémoire locale
+    if (typeof saveDB === 'function') saveDB(); 
 
-    // On met à jour l'affichage sur les différents écrans possibles
-    if (typeof renderFeed === 'function') renderFeed();
-    if (typeof renderHomeFeed === 'function') renderHomeFeed();
-    if (typeof renderProfile === 'function') renderProfile();
+    // Mises à jour de tous tes compteurs à l'écran
+    const countToDisplay = p.eu.toLocaleString('fr-FR');
+    
+    const homeCnt = document.getElementById('euc_' + postId);
+    if(homeCnt) homeCnt.textContent = countToDisplay;
+    
+    const eucEl2 = document.getElementById('euc2_' + postId);
+    if(eucEl2) eucEl2.textContent = countToDisplay;
+    
+    const expCnt = document.getElementById('euc_explore_' + postId);
+    if(expCnt) expCnt.textContent = '⚡ ' + countToDisplay;
+    
+    const homeBtn = document.getElementById('eubtn_' + postId);
+    if(homeBtn) isNowLiked ? homeBtn.classList.add('fired') : homeBtn.classList.remove('fired');
+    
+    if(typeof currentReadPostId !== 'undefined' && currentReadPostId === postId){
+      const readCnt = document.getElementById('read-eu-count');
+      if(readCnt) readCnt.textContent = countToDisplay;
+      const readBtn = document.getElementById('read-eu-btn');
+      if(readBtn) isNowLiked ? readBtn.classList.add('fired') : readBtn.classList.remove('fired');
+    }
   }
 
-  // 4. On prévient Neon en arrière-plan ! 🚀
+  // 4. On prévient Neon en arrière-plan
   fetch('/.netlify/functions/likes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ postId: postId, email: userEmail })
   })
-  .then(res => res.json())
+  .then(r => r.json())
   .then(data => {
-    // Le serveur a répondu, on enlève le cadenas !
     _likeInFlight[postId] = false;
+    if(data.error){ 
+      if (typeof showToast === 'function') showToast('Erreur: ' + data.error); 
+      return; 
+    }
+    
+    if(isNowLiked) {
+      if (typeof showToast === 'function') showToast('⚡ Eurêka !','s');
+    } else {
+      if (typeof showToast === 'function') showToast('Eurêka retiré');
+    }
   })
   .catch(err => {
-    console.error("Erreur lors du like:", err);
-    // En cas d'erreur réseau, on enlève le cadenas quand même
-    _likeInFlight[postId] = false; 
-  });
-}
-    saveDB();
-    // Mettre à jour le compteur dans le feed
-    const eucEl = document.getElementById('euc_'+postId);
-    if(eucEl) eucEl.textContent = p.eu;
-    const eucEl2 = document.getElementById('euc2_'+postId);
-    if(eucEl2) eucEl2.textContent = p.eu;
-    // Mettre à jour l'état du bouton
-    const btnEl = document.getElementById('eubtn_'+postId);
-    if(btnEl) euStates[postId] ? btnEl.classList.add('fired') : btnEl.classList.remove('fired');
-    // Mettre à jour read modal si ouvert
-    const readEuc = document.getElementById('read-eu-count');
-    if(readEuc && currentReadPostId===postId) readEuc.textContent = p.eu;
-    const readBtn = document.getElementById('read-eu-btn');
-    if(readBtn && currentReadPostId===postId) euStates[postId] ? readBtn.classList.add('fired') : readBtn.classList.remove('fired');
-  }
-
-  fetch('/.netlify/functions/likes', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-body: JSON.stringify({ postId: postId, email: currentUser.email })
-  }).then(r=>r.json()).then(data=>{
+    console.error("Erreur réseau:", err);
     _likeInFlight[postId] = false;
-    if(data.error){ showToast('Erreur: '+data.error); return; }
-    const count = data.count || 0;
-    const liked = data.liked;
-
-    // Update in-memory DB
-    const p = DB.posts.find(x=>x.id===postId);
-    if(p) p.eu = count;
-
-    // Update liked state
-    euStates[postId] = liked;
-
-    // Update all UI elements for this post
-    // Home feed counter
-    const homeCnt = document.getElementById('euc_'+postId);
-    if(homeCnt) homeCnt.textContent = count.toLocaleString('fr-FR');
-    // Home feed button
-    const homeBtn = document.getElementById('eubtn_'+postId);
-    if(homeBtn){
-      if(liked) homeBtn.classList.add('fired');
-      else homeBtn.classList.remove('fired');
-    }
-    // Explore feed counter
-    const expCnt = document.getElementById('euc_explore_'+postId);
-    if(expCnt) expCnt.textContent = '⚡ '+count.toLocaleString('fr-FR');
-    // Read modal counter
-    if(currentReadPostId === postId){
-      const readCnt = document.getElementById('read-eu-count');
-      if(readCnt) readCnt.textContent = count.toLocaleString('fr-FR');
-      const readBtn = document.getElementById('read-eu-btn');
-      if(readBtn){
-        if(liked) readBtn.classList.add('fired');
-        else readBtn.classList.remove('fired');
-      }
-    }
-
-    if(liked) showToast('⚡ Eurêka !','s');
-    else showToast('Eurêka retiré');
-  }).catch(()=>{
-    _likeInFlight[postId] = false;
-    showToast('Erreur réseau');
   });
 }
 
 // Load liked states from DB for a list of post IDs
-function loadLikedStates(postIds){
+function loadLikedStates(postIds) {
   const userEmail = currentUser?.email;
   if(!userEmail) return;
-  postIds.forEach(postId=>{
-    fetch('/.netlify/functions/likes?postId='+encodeURIComponent(postId)+'&userEmail='+encodeURIComponent(userEmail))
-      .then(r=>r.json())
-      .then(data=>{
+  postIds.forEach(postId => {
+    fetch('/.netlify/functions/likes?postId=' + encodeURIComponent(postId) + '&userEmail=' + encodeURIComponent(userEmail))
+      .then(r => r.json())
+      .then(data => {
         if(data.liked){
-          euStates[postId] = true;
-          const btn = document.getElementById('eubtn_'+postId);
+          if (typeof euStates !== 'undefined') euStates[postId] = true;
+          const btn = document.getElementById('eubtn_' + postId);
           if(btn) btn.classList.add('fired');
         }
         if(data.count !== undefined){
-          const p = DB.posts.find(x=>x.id===postId);
+          const p = DB.posts.find(x => x.id === postId);
           if(p) p.eu = data.count;
-          const cnt = document.getElementById('euc_'+postId);
+          const cnt = document.getElementById('euc_' + postId);
           if(cnt) cnt.textContent = data.count.toLocaleString('fr-FR');
         }
       }).catch(()=>{});
@@ -3874,16 +3842,15 @@ function loadLikedStates(postIds){
 }
 
 // Legacy wrappers for backward compatibility
-function fireEu(btnId,countId){
+function fireEu(btnId, countId){
   const postId = btnId.replace('eubtn_','');
   toggleLike(postId);
 }
 
 function fireReadEu(){
-  if(!currentReadPostId) return;
+  if(typeof currentReadPostId === 'undefined' || !currentReadPostId) return;
   toggleLike(currentReadPostId);
 }
-
 // ═══ MODALS ═══
 function openModal(id){document.getElementById(id).classList.add('show');}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
