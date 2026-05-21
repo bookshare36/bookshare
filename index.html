@@ -3727,16 +3727,11 @@ function showToast(msg,type=''){
   requestAnimationFrame(()=>requestAnimationFrame(()=>t.classList.add('show')));
   setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),400);},3000);
 }
-
 // ═══ EURÊKA (UNIFIED LIKE SYSTEM) ═══
 
-// Petit cadenas pour empêcher le spam de clics
-let _likeInFlight = _likeInFlight || {};
-
-// Petit cadenas pour empêcher le spam de clics
-_likeInFlight = typeof _likeInFlight !== 'undefined' ? _likeInFlight : {};
-
 function toggleLike(postId) {
+  window.likeLock = window.likeLock || {};
+
   // 1. Vérifications de base
   if (typeof requireAuth === 'function' && !requireAuth()) return;
   const userEmail = currentUser?.email;
@@ -3745,9 +3740,9 @@ function toggleLike(postId) {
     return; 
   }
 
-  // 2. Cadenas anti-spam
-  if (_likeInFlight[postId]) return;
-  _likeInFlight[postId] = true;
+  // 2. Cadenas anti-spam sécurisé
+  if (window.likeLock[postId]) return;
+  window.likeLock[postId] = true;
 
   // 3. Mise à jour locale immédiate (Optimistic UI)
   const p = DB.posts.find(x => x.id === postId);
@@ -3766,10 +3761,8 @@ function toggleLike(postId) {
       }
     }
     
-    // Sauvegarde en mémoire locale
     if (typeof saveDB === 'function') saveDB(); 
 
-    // Mises à jour de tous tes compteurs à l'écran
     const countToDisplay = p.eu.toLocaleString('fr-FR');
     
     const homeCnt = document.getElementById('euc_' + postId);
@@ -3792,7 +3785,7 @@ function toggleLike(postId) {
     }
   }
 
-  // 4. On prévient Neon en arrière-plan
+  // 4. On prévient Neon
   fetch('/.netlify/functions/likes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3800,12 +3793,11 @@ function toggleLike(postId) {
   })
   .then(r => r.json())
   .then(data => {
-    _likeInFlight[postId] = false;
+    window.likeLock[postId] = false;
     if(data.error){ 
       if (typeof showToast === 'function') showToast('Erreur: ' + data.error); 
       return; 
     }
-    
     if(isNowLiked) {
       if (typeof showToast === 'function') showToast('⚡ Eurêka !','s');
     } else {
@@ -3814,7 +3806,7 @@ function toggleLike(postId) {
   })
   .catch(err => {
     console.error("Erreur réseau:", err);
-    _likeInFlight[postId] = false;
+    window.likeLock[postId] = false;
   });
 }
 
@@ -3851,6 +3843,7 @@ function fireReadEu(){
   if(typeof currentReadPostId === 'undefined' || !currentReadPostId) return;
   toggleLike(currentReadPostId);
 }
+
 // ═══ MODALS ═══
 function openModal(id){document.getElementById(id).classList.add('show');}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
