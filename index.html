@@ -4788,7 +4788,7 @@ function sendComm(){
   const postId = currentCommPostId;
   if(!postId) return;
 
-  // Créer le commentaire
+// Créer le commentaire
   const comm = {
     id: 'c_'+Date.now(),
     postId,
@@ -4796,6 +4796,7 @@ function sendComm(){
     nom: currentUser.nom || '',
     initials: (currentUser.prenom?.[0]||'?')+(currentUser.nom?.[0]||''),
     avatarBg: currentUser.avatarBg || 'linear-gradient(135deg,var(--amber),var(--gold))',
+    email: currentUser.email, // <-- AJOUTE CETTE LIGNE ICI !
     texte: val,
     ts: Date.now()
   };
