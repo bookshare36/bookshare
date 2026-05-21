@@ -3767,7 +3767,6 @@ function toggleLike(postId){
   fetch('/.netlify/functions/likes', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-   // NOUVELLE LIGNE :
 body: JSON.stringify({ postId: postId, email: currentUser.email })
   }).then(r=>r.json()).then(data=>{
     _likeInFlight[postId] = false;
