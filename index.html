@@ -5243,13 +5243,16 @@ function loadDB(){
 loadDB();
 
 // Posts en mémoire (enrichis des publications utilisateur)
-function getAllPosts(){ return DB.posts; }
+function getAllPosts(){ 
+  // On renvoie toute la base de données
+  return DB.posts || []; 
+}
 
 function getMyPosts(){
   if(!currentUser) return [];
-  return DB.posts.filter(p=>p.userId===currentUser.email);
+  // On vérifie à la fois 'email' et 'userId' au cas où tu aurais d'anciens posts
+  return (DB.posts || []).filter(p => p.email === currentUser.email || p.userId === currentUser.email);
 }
-
 // ═══ FOLLOW SYSTEM ═══
 function followUser(userId, btn){
   const idx = DB.following.indexOf(userId);
