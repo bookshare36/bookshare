@@ -8,7 +8,7 @@
 <!-- Open Graph (WhatsApp, LinkedIn, Facebook, Telegram) -->
 <meta property="og:type" content="website">
 <meta property="og:site_name"   content="KultShare">
-<meta property="og:title"       content="KultShare — Le savoir partagé">
+<meta property="og:title"       content="KultShare — Le savoir partagé">f
 <meta property="og:description" content="La plateforme du partage culturel et intellectuel. Rejoins la communauté des lecteurs engagés.">
 <meta property="og:url"         content="https://kultshare.fr">
 <meta property="og:image"       content="https://kultshare.fr/og-image.png">
@@ -3731,23 +3731,61 @@ function showToast(msg,type=''){
 // ═══ EURÊKA (UNIFIED LIKE SYSTEM) ═══
 let _likeInFlight = {};
 
-function toggleLike(postId){
-  if(!requireAuth()) return;
+// Petit cadenas pour empêcher le spam de clics
+let _likeInFlight = _likeInFlight || {};
+
+function toggleLike(postId) {
+  // 1. Vérifications de base (être connecté)
+  if (typeof requireAuth === 'function' && !requireAuth()) return;
   const userEmail = currentUser?.email;
-  if(!userEmail){ showToast('Connecte-toi pour liker'); return; }
-  if(_likeInFlight[postId]) return;
+  if (!userEmail) { 
+    if (typeof showToast === 'function') showToast('Connecte-toi pour liker', 'e'); 
+    return; 
+  }
+
+  // 2. Si un like est déjà en cours d'envoi, on bloque
+  if (_likeInFlight[postId]) return;
   _likeInFlight[postId] = true;
 
-  // Mise à jour locale immédiate
-  const p = DB.posts.find(x=>x.id===postId);
-  if(p){
-    if(euStates[postId]){
-      euStates[postId] = false;
-      p.eu = Math.max(0,(p.eu||0)-1);
-    } else {
-      euStates[postId] = true;
-      p.eu = (p.eu||0)+1;
+  // 3. Mise à jour locale immédiate (Optimistic UI - ton super code !)
+  const p = DB.posts.find(x => x.id === postId);
+  if (p) {
+    if (typeof euStates !== 'undefined') {
+      if (euStates[postId]) {
+        euStates[postId] = false;
+        p.eu = Math.max(0, (p.eu || 0) - 1);
+      } else {
+        euStates[postId] = true;
+        p.eu = (p.eu || 0) + 1;
+      }
     }
+    
+    // On sauvegarde en mémoire locale
+    saveDB(); 
+
+    // On met à jour l'affichage sur les différents écrans possibles
+    if (typeof renderFeed === 'function') renderFeed();
+    if (typeof renderHomeFeed === 'function') renderHomeFeed();
+    if (typeof renderProfile === 'function') renderProfile();
+  }
+
+  // 4. On prévient Neon en arrière-plan ! 🚀
+  fetch('/.netlify/functions/likes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ postId: postId, email: userEmail })
+  })
+  .then(res => res.json())
+  .then(data => {
+    // Le serveur a répondu, on enlève le cadenas !
+    _likeInFlight[postId] = false;
+  })
+  .catch(err => {
+    console.error("Erreur lors du like:", err);
+    // En cas d'erreur réseau, on enlève le cadenas quand même
+    _likeInFlight[postId] = false; 
+  });
+}
     saveDB();
     // Mettre à jour le compteur dans le feed
     const eucEl = document.getElementById('euc_'+postId);
