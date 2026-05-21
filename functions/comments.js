@@ -4,6 +4,7 @@ exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', // <-- LA CLÉ EST LÀ !
     'Content-Type': 'application/json',
   };
 
@@ -30,13 +31,13 @@ exports.handler = async (event) => {
       )
     `);
 
-    // 2. Ajout automatique des colonnes pour correspondre à ton site
+    // 2. Ajout automatique des colonnes
     await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS avatar_bg TEXT`);
     await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS email TEXT`);
     await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS prenom TEXT`);
     await pool.query(`ALTER TABLE comments ADD COLUMN IF NOT EXISTS nom TEXT`);
 
-    // 3. GET — récupérer les commentaires d'un post
+    // 3. GET — récupérer les commentaires
     if (event.httpMethod === 'GET') {
       const postId = event.queryStringParameters?.postId;
       if (!postId) return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId requis' }) };
@@ -44,7 +45,6 @@ exports.handler = async (event) => {
       const result = await pool.query('SELECT * FROM comments WHERE post_id=$1 ORDER BY ts ASC', [postId]);
       await pool.end();
       
-      // TRADUCTION DE NEON VERS TON SITE
       const comments = result.rows.map(row => ({
         id: row.id,
         postId: row.post_id,
@@ -63,7 +63,6 @@ exports.handler = async (event) => {
     // 4. POST — ajouter un commentaire
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '{}');
-      
       if (!body.postId || !body.texte) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId et texte requis' }) };
       }
