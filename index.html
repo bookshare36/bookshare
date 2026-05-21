@@ -5551,14 +5551,30 @@ function renderMyPosts(posts){
     </div>
   `).join('');
 }
-
 function deletePost(id){
   if(!confirm('Supprimer cette publication ?')) return;
+  
+  // 1. On l'efface de la mémoire locale (pour que ça disparaisse de l'écran instantanément)
   const idx = DB.posts.findIndex(p=>p.id===id);
-  if(idx>=0) DB.posts.splice(idx,1);
-  renderMyPosts(getMyPosts());
-  renderFeed();
-  showToast('🗑 Publication supprimée');
+  if(idx>=0) {
+    DB.posts.splice(idx,1);
+    saveDB(); // On sauvegarde ce changement en local
+  }
+  
+  // 2. On met à jour l'affichage
+  if(typeof renderMyPosts === 'function') renderMyPosts(getMyPosts());
+  if(typeof renderProfile === 'function') renderProfile();
+  if(typeof renderFeed === 'function') renderFeed();
+  if(typeof renderHomeFeed === 'function') renderHomeFeed();
+  
+  showToast('🗑 Publication supprimée', 's');
+
+  // 3. LE COUP DE GRÂCE 🔫 : On prévient Neon de le détruire pour de bon !
+  fetch('/.netlify/functions/posts', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: id })
+  }).catch(err => console.error("Erreur de suppression sur Neon:", err));
 }
 
 function openEditPostModal(){
@@ -6069,53 +6085,37 @@ function shareRead(){
     showToast('🔗 Lien copié !','s');
   }
 }
-
 // ═══ COMMENTAIRES DYNAMIQUES ═══
 let currentCommPostId = null;
 
 function openCommModal(postId){
   currentCommPostId = postId || currentCommPostId || 'p1';
+  
+  // 1. On lance le téléchargement avec Neon (qui mettra à jour l'écran tout seul !)
   loadCommentsFromNeon(currentCommPostId);
-  // Charger depuis Neon en arrière-plan
-  fetch('/.netlify/functions/comments?postId='+currentCommPostId)
-    .then(r=>r.json())
-    .then(data=>{
-      if(data.comments && data.comments.length > 0){
-        DB.comments[currentCommPostId] = data.comments.map(c=>({
-          id: c.id, postId: c.post_id, prenom: c.auteur?.split(' ')[0]||'',
-          nom: c.auteur?.split(' ')[1]||'', initials: c.initials||'?',
-          texte: c.texte, ts: Number(c.ts)
-        }));
-        saveDB();
-        renderComments(currentCommPostId);
-        document.getElementById('comm-count').textContent = '('+DB.comments[currentCommPostId].length+')';
-      }
-    }).catch(()=>{});
-  const comms = DB.comments[currentCommPostId] || [];
-  const count = comms.length;
-  document.getElementById('comm-count').textContent = '('+count+')';
+  
+  // 2. En attendant que Neon réponde (ça prend 0.5s), on affiche ce qu'on a déjà en mémoire
   renderComments(currentCommPostId);
 
-  // Avatar utilisateur
+  // 3. On met à jour le compteur dans le titre de la fenêtre
+  const comms = DB.comments[currentCommPostId] || [];
+  const countEl = document.getElementById('comm-count');
+  if (countEl) countEl.textContent = '(' + comms.length + ')';
+
+  // 4. On met l'initiale de l'utilisateur sur sa petite bulle de saisie
   if(currentUser){
     const av = document.getElementById('comm-av-me');
-    if(av) av.textContent = (currentUser.prenom?currentUser.prenom[0]:'?')+(currentUser.nom?currentUser.nom[0]:'');
+    if(av) av.textContent = (currentUser.prenom ? currentUser.prenom[0] : '?') + (currentUser.nom ? currentUser.nom[0] : '');
   }
 
-  // Seed comments
-  const list = document.getElementById('comm-list');
-  list.innerHTML = comms.map(c=>`
-    <div style="display:flex;gap:9px;margin-bottom:11px;">
-      <div class="fpav" style="background:${c.avatarBg||'var(--card2)'};width:30px;height:30px;font-size:11px;">${c.initials||'?'}</div>
-      <div><div style="font-size:12px;font-weight:600;color:var(--txt);margin-bottom:3px;">${c.prenom} <span style="font-size:9px;color:var(--txt3);">${timeAgo(c.ts)}</span></div>
-      <div style="font-size:12px;color:var(--txt);background:var(--card2);padding:9px 11px;border-radius:0 9px 9px 9px;line-height:1.5;">${c.text}</div></div>
-    </div>
-  `).join('');
-  if(!comms.length) list.innerHTML='<div style="text-align:center;padding:20px;color:var(--txt2);font-size:12px;font-style:italic;">Aucun commentaire. Sois le premier !</div>';
-
-  openModal('comm-modal');
+  // 5. On affiche la fenêtre à l'écran !
+  if (typeof openModal === 'function') {
+    openModal('comm-modal');
+  } else {
+    const modal = document.getElementById('comm-modal');
+    if (modal) modal.style.display = 'flex';
+  }
 }
-
 function sendComm(){
   const inp=document.getElementById('cinput'), val=inp.value.trim();
   if(!val||!currentCommPostId) return;
