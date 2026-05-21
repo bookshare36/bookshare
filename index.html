@@ -6,7 +6,7 @@
 <title>KultShare — Le savoir partagé</title>
 <meta name="description" content="La plateforme du partage culturel et intellectuel. Résumés de livres, films, musique, analyses et duels d'idées.">
 <!-- Open Graph (WhatsApp, LinkedIn, Facebook, Telegram) -->
-<meta property="og:type"        content="website">
+<meta property="og:type" content="website">
 <meta property="og:site_name"   content="KultShare">
 <meta property="og:title"       content="KultShare — Le savoir partagé">
 <meta property="og:description" content="La plateforme du partage culturel et intellectuel. Rejoins la communauté des lecteurs engagés.">
@@ -4777,7 +4777,6 @@ function closeChat(){
   document.getElementById('dmlv').style.display='block';
   document.getElementById('dmcv').style.display='none';
 }
-
 // ═══ COMMENTAIRES ═══
 function sendComm(){
   if(!currentUser || !currentUser.email){ showToast('Connecte-toi pour commenter','e'); return; }
@@ -4788,7 +4787,7 @@ function sendComm(){
   const postId = currentCommPostId;
   if(!postId) return;
 
-// Créer le commentaire
+  // Créer le commentaire
   const comm = {
     id: 'c_'+Date.now(),
     postId,
@@ -4796,7 +4795,7 @@ function sendComm(){
     nom: currentUser.nom || '',
     initials: (currentUser.prenom?.[0]||'?')+(currentUser.nom?.[0]||''),
     avatarBg: currentUser.avatarBg || 'linear-gradient(135deg,var(--amber),var(--gold))',
-    email: currentUser.email, // <-- AJOUTE CETTE LIGNE ICI !
+    email: currentUser.email,
     texte: val,
     ts: Date.now()
   };
@@ -4847,7 +4846,34 @@ function renderComments(postId){
     </div>
   `).join('');
   list.scrollTop = list.scrollHeight;
+} // <-- J'ai rajouté l'accolade manquante ici !
+
+async function loadCommentsFromNeon(postId) {
+  try {
+    const r = await fetch(`/.netlify/functions/comments?postId=${postId}`);
+    const data = await r.json();
+    
+    if (data.comments) {
+      // 1. On met à jour la mémoire locale avec les vrais commentaires de Neon
+      DB.comments[postId] = data.comments;
+      saveDB();
+      
+      // 2. On redessine les commentaires à l'écran
+      renderComments(postId);
+      
+      // 3. On met à jour tous les petits compteurs (bulles) sur le site
+      const count = data.comments.length;
+      document.querySelectorAll('[id^="commc_"]').forEach(el => {
+        if (el.id === 'commc_' + postId) el.textContent = count;
+      });
+      const modalHeader = document.getElementById('comm-count');
+      if (modalHeader) modalHeader.textContent = '(' + count + ')';
+    }
+  } catch (e) {
+    console.warn('Erreur lors du chargement des commentaires Neon:', e.message);
+  }
 }
+
 
 // ═══ TYPE DE CONTENU ═══
 let currentContentType = 'livre';
@@ -6049,6 +6075,7 @@ let currentCommPostId = null;
 
 function openCommModal(postId){
   currentCommPostId = postId || currentCommPostId || 'p1';
+  loadCommentsFromNeon(currentCommPostId);
   // Charger depuis Neon en arrière-plan
   fetch('/.netlify/functions/comments?postId='+currentCommPostId)
     .then(r=>r.json())
