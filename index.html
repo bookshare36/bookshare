@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="fr" data-theme="light">
 <head>
+  <script>
+  window.startFromWelcome = function() {
+    const charte = document.getElementById('charte');
+    if (charte) {
+      charte.style.display = 'none';
+    }
+  };
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KultShare — Le savoir partagé</title>
@@ -7658,12 +7666,6 @@ function applyTranslations(){
   const fDKeys=['fmt-texte-d','fmt-video-d','fmt-audio-d','fmt-mixte-d'];
   fmtLabels.forEach((el,i)=>{if(T[fKeys[i]]) el.textContent=T[fKeys[i]];});
   fmtDescs.forEach((el,i)=>{if(T[fDKeys[i]]) el.textContent=T[fDKeys[i]];});
-}
-function startFromWelcome() {
-  const charte = document.getElementById('charte');
-  if (charte) {
-    charte.style.display = 'none';
-  }
 }
 // Restore language from localStorage on load
 (function(){
