@@ -1,6 +1,5 @@
 const { Pool } = require('pg');
 
-// Connexion à ta base de données Neon
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -9,7 +8,6 @@ const pool = new Pool({
 });
 
 exports.handler = async (event, context) => {
-  // Les fameux headers pour laisser passer les données (CORS)
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -20,7 +18,7 @@ exports.handler = async (event, context) => {
     return { statusCode: 200, headers, body: '' };
   }
 
-  // 1. QUAND QUELQU'UN CLIQUE SUR LE BOUTON EURÊKA (POST)
+  // 1. POST : AJOUTER OU ENLEVER UN LIKE
   if (event.httpMethod === 'POST') {
     try {
       const data = JSON.parse(event.body);
@@ -30,27 +28,25 @@ exports.handler = async (event, context) => {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Données manquantes' }) };
       }
 
-      // A. On vérifie si l'utilisateur a déjà liké ce post
-      const checkQuery = 'SELECT * FROM likes WHERE postid = $1 AND email = $2';
-      const checkResult = await pool.query(checkQuery, [postId, email]);
+      // ON UTILISE post_id AVEC LE TIRET DU BAS !
+      const checkResult = await pool.query('SELECT * FROM likes WHERE post_id = $1 AND email = $2', [postId, email]);
 
       let isNowLiked = false;
 
       if (checkResult.rows.length > 0) {
-        // S'il avait déjà liké, on supprime le like (Unlike)
-        await pool.query('DELETE FROM likes WHERE postid = $1 AND email = $2', [postId, email]);
+        // Enlever le like
+        await pool.query('DELETE FROM likes WHERE post_id = $1 AND email = $2', [postId, email]);
         isNowLiked = false;
       } else {
-        // S'il n'avait pas liké, on l'ajoute dans la base (Like)
-        await pool.query('INSERT INTO likes (postid, email) VALUES ($1, $2)', [postId, email]);
+        // Ajouter le like
+        await pool.query('INSERT INTO likes (post_id, email) VALUES ($1, $2)', [postId, email]);
         isNowLiked = true;
       }
 
-      // B. On recompte le vrai total de likes pour ce post
-      const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE postid = $1', [postId]);
+      // Recompter
+      const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE post_id = $1', [postId]);
       const newCount = parseInt(countResult.rows[0].count, 10);
 
-      // C. On renvoie la bonne nouvelle au navigateur !
       return {
         statusCode: 200,
         headers,
@@ -63,7 +59,7 @@ exports.handler = async (event, context) => {
     }
   }
 
-  // 2. QUAND LE SITE S'OUVRE ET VEUT AFFICHER LES COMPTEURS (GET)
+  // 2. GET : LIRE LES LIKES AU CHARGEMENT DE LA PAGE
   if (event.httpMethod === 'GET') {
     try {
       const postId = event.queryStringParameters.postId;
@@ -73,14 +69,13 @@ exports.handler = async (event, context) => {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId manquant' }) };
       }
 
-      // A. Compter le total des likes
-      const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE postid = $1', [postId]);
+      // ON UTILISE post_id ICI AUSSI
+      const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE post_id = $1', [postId]);
       const totalCount = parseInt(countResult.rows[0].count, 10);
 
-      // B. Vérifier si l'utilisateur actuel a liké (pour allumer le bouton en jaune)
       let userHasLiked = false;
       if (userEmail) {
-        const checkResult = await pool.query('SELECT * FROM likes WHERE postid = $1 AND email = $2', [postId, userEmail]);
+        const checkResult = await pool.query('SELECT * FROM likes WHERE post_id = $1 AND email = $2', [postId, userEmail]);
         userHasLiked = checkResult.rows.length > 0;
       }
 
