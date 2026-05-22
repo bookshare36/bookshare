@@ -7659,7 +7659,12 @@ function applyTranslations(){
   fmtLabels.forEach((el,i)=>{if(T[fKeys[i]]) el.textContent=T[fKeys[i]];});
   fmtDescs.forEach((el,i)=>{if(T[fDKeys[i]]) el.textContent=T[fDKeys[i]];});
 }
-
+function startFromWelcome() {
+  const charte = document.getElementById('charte');
+  if (charte) {
+    charte.style.display = 'none';
+  }
+}
 // Restore language from localStorage on load
 (function(){
   const saved=localStorage.getItem('bs_lang');
