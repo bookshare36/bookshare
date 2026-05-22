@@ -1,6 +1,6 @@
 [build]
   functions = "functions"
-  command = "cd functions && npm install"
+  command = "npm install && cd functions && npm install"
 
 [[redirects]]
   from = "/api/*"
