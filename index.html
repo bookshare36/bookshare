@@ -1015,8 +1015,7 @@ button{border:none;border-radius:9px;padding:10px;cursor:pointer;font-weight:700
       </div>
       <div style="display:flex;gap:7px;padding-top:9px;border-top:1px solid var(--bdr);">
         <input type="text" class="fi" id="chatinp" placeholder="Message..." style="flex:1;border-radius:100px;" onkeydown="if(event.key==='Enter')sendMsg()">
-        <button style="width:34px;height:34px;border-radius:50%;background:var(--gold);color:#1A0A00;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="sendMsg()">↑</button>
-      </div>
+        <button style="width:34px;height:34px;border-radius:50%;background:var(--gold);color:#1A0A00;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="console.log('Clic flèche'); sendMsg()">↑</button>
     </div>
   </div>
 </div>
@@ -7668,25 +7667,5 @@ function applyTranslations(){
   }
 })();
 
-<script>
-  document.addEventListener('click', function(event) {
-    const el = event.target;
-    // On affiche tout ce qu'on clique, pour voir quel est l'ID et le texte du bouton
-    console.log("Clic sur élément :", el.tagName, "ID:", el.id, "Texte:", el.textContent);
-    
-    // On teste si c'est bien lui
-    if (el.textContent.toLowerCase().includes('envoyer') || 
-        el.id.toLowerCase().includes('btn') || 
-        el.classList.contains('send-btn')) { // Ajout d'une classe au cas où
-      
-      console.log("👆 Clic confirmé sur le bouton d'envoi !");
-      if (typeof sendComm === 'function') {
-        sendComm();
-      } else {
-        console.error("❌ La fonction sendComm est introuvable !");
-      }
-    }
-  });
-</script>
 </body>
 </html>
