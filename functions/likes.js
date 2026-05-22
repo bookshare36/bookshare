@@ -1,74 +1,100 @@
 const { Pool } = require('pg');
 
-exports.handler = async (event) => {
+// Connexion à ta base de données Neon
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
+
+exports.handler = async (event, context) => {
+  // Les fameux headers pour laisser passer les données (CORS)
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', // <-- LA CLÉ EST ICI !
-    'Content-Type': 'application/json',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
   };
 
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers };
-
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-  });
-
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS likes (
-        post_id    TEXT,
-        email      TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        PRIMARY KEY (post_id, email)
-      )
-    `);
-
-    // GET — récupérer les likes d'un post
-    if (event.httpMethod === 'GET') {
-      const postId = event.queryStringParameters?.postId;
-      if (!postId) {
-        await pool.end();
-        return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId requis' }) };
-      }
-      const result = await pool.query('SELECT email FROM likes WHERE post_id = $1', [postId]);
-      await pool.end();
-      return { statusCode: 200, headers, body: JSON.stringify({ likes: result.rows.map(r=>r.email), count: result.rows.length }) };
-    }
-
-    // POST — ajouter ou retirer un like (toggle)
-    if (event.httpMethod === 'POST') {
-      const { postId, email } = JSON.parse(event.body || '{}');
-      if (!postId || !email) {
-        await pool.end();
-        return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId et email requis' }) };
-      }
-
-      const existing = await pool.query('SELECT 1 FROM likes WHERE post_id=$1 AND email=$2', [postId, email]);
-      let liked;
-      
-      if (existing.rows.length > 0) {
-        await pool.query('DELETE FROM likes WHERE post_id=$1 AND email=$2', [postId, email]);
-        await pool.query('UPDATE posts SET eu = GREATEST(0, eu - 1) WHERE id=$1', [postId]);
-        liked = false;
-      } else {
-        await pool.query('INSERT INTO likes (post_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING', [postId, email]);
-        await pool.query('UPDATE posts SET eu = eu + 1 WHERE id=$1', [postId]);
-        liked = true;
-      }
-
-      const count = await pool.query('SELECT COUNT(*) FROM likes WHERE post_id=$1', [postId]);
-      await pool.end();
-      return { statusCode: 200, headers, body: JSON.stringify({ liked, count: Number(count.rows[0].count) }) };
-    }
-
-    await pool.end();
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Methode non autorisee' }) };
-
-  } catch (err) {
-    console.error('likes error:', err.message);
-    try { await pool.end(); } catch(e) {} // Fermeture sécurisée
-    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
   }
+
+  // 1. QUAND QUELQU'UN CLIQUE SUR LE BOUTON EURÊKA (POST)
+  if (event.httpMethod === 'POST') {
+    try {
+      const data = JSON.parse(event.body);
+      const { postId, email } = data;
+
+      if (!postId || !email) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Données manquantes' }) };
+      }
+
+      // A. On vérifie si l'utilisateur a déjà liké ce post
+      const checkQuery = 'SELECT * FROM likes WHERE postid = $1 AND email = $2';
+      const checkResult = await pool.query(checkQuery, [postId, email]);
+
+      let isNowLiked = false;
+
+      if (checkResult.rows.length > 0) {
+        // S'il avait déjà liké, on supprime le like (Unlike)
+        await pool.query('DELETE FROM likes WHERE postid = $1 AND email = $2', [postId, email]);
+        isNowLiked = false;
+      } else {
+        // S'il n'avait pas liké, on l'ajoute dans la base (Like)
+        await pool.query('INSERT INTO likes (postid, email) VALUES ($1, $2)', [postId, email]);
+        isNowLiked = true;
+      }
+
+      // B. On recompte le vrai total de likes pour ce post
+      const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE postid = $1', [postId]);
+      const newCount = parseInt(countResult.rows[0].count, 10);
+
+      // C. On renvoie la bonne nouvelle au navigateur !
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true, liked: isNowLiked, count: newCount })
+      };
+
+    } catch (error) {
+      console.error("Erreur de traitement du like:", error);
+      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Impossible de sauvegarder le like' }) };
+    }
+  }
+
+  // 2. QUAND LE SITE S'OUVRE ET VEUT AFFICHER LES COMPTEURS (GET)
+  if (event.httpMethod === 'GET') {
+    try {
+      const postId = event.queryStringParameters.postId;
+      const userEmail = event.queryStringParameters.userEmail;
+
+      if (!postId) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId manquant' }) };
+      }
+
+      // A. Compter le total des likes
+      const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE postid = $1', [postId]);
+      const totalCount = parseInt(countResult.rows[0].count, 10);
+
+      // B. Vérifier si l'utilisateur actuel a liké (pour allumer le bouton en jaune)
+      let userHasLiked = false;
+      if (userEmail) {
+        const checkResult = await pool.query('SELECT * FROM likes WHERE postid = $1 AND email = $2', [postId, userEmail]);
+        userHasLiked = checkResult.rows.length > 0;
+      }
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ count: totalCount, liked: userHasLiked })
+      };
+
+    } catch (error) {
+      console.error("Erreur de lecture des likes:", error);
+      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Erreur de lecture serveur' }) };
+    }
+  }
+
+  return { statusCode: 405, headers, body: JSON.stringify({ error: 'Méthode non autorisée' }) };
 };
