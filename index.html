@@ -7669,7 +7669,25 @@ function applyTranslations(){
   }
 })();
 
-
+<script>
+  document.addEventListener('click', function(event) {
+    const el = event.target;
+    // On affiche tout ce qu'on clique, pour voir quel est l'ID et le texte du bouton
+    console.log("Clic sur élément :", el.tagName, "ID:", el.id, "Texte:", el.textContent);
+    
+    // On teste si c'est bien lui
+    if (el.textContent.toLowerCase().includes('envoyer') || 
+        el.id.toLowerCase().includes('btn') || 
+        el.classList.contains('send-btn')) { // Ajout d'une classe au cas où
+      
+      console.log("👆 Clic confirmé sur le bouton d'envoi !");
+      if (typeof sendComm === 'function') {
+        sendComm();
+      } else {
+        console.error("❌ La fonction sendComm est introuvable !");
+      }
+    }
+  });
 </script>
 </body>
 </html>
