@@ -4867,19 +4867,27 @@ function renderComments(postId){
   `).join('');
   list.scrollTop = list.scrollHeight;
 }
-
 async function loadCommentsFromNeon(postId) {
   try {
     let cleanPostId = postId.replace('pbtn_', '').replace('cbtn_', '').replace('commbtn_', '');
-    const r = await fetch('/.netlify/functions/comments?postId=' + cleanPostId);
+    
+    // 1. Le "&t=" avec la date force le navigateur à chercher la vraie version fraîche dans Neon (Anti-Cache)
+    const r = await fetch('/.netlify/functions/comments?postId=' + cleanPostId + '&t=' + Date.now());
     const data = await r.json();
     
     if (data && Array.isArray(data)) {
-      DB.comments[cleanPostId] = data;
+      // 2. On s'assure de bien traduire les minuscules de Postgres pour l'affichage
+      const commentsPropres = data.map(cm => ({
+        ...cm,
+        avatarBg: cm.avatarbg || cm.avatarBg || 'linear-gradient(135deg,var(--amber),var(--gold))',
+        texte: cm.texte || cm.text || ''
+      }));
+
+      DB.comments[cleanPostId] = commentsPropres;
       if (typeof saveDB === 'function') saveDB();
       renderComments(cleanPostId);
       
-      const count = data.length;
+      const count = commentsPropres.length;
       document.querySelectorAll('[id^="commc_"]').forEach(el => {
         if (el.id === 'commc_' + cleanPostId || el.id === 'commc_pbtn_' + cleanPostId) el.textContent = count;
       });
@@ -4890,6 +4898,7 @@ async function loadCommentsFromNeon(postId) {
     console.warn('Erreur lors du chargement des commentaires Neon:', e.message);
   }
 }
+
 
 // ═══ TYPE DE CONTENU ═══
 let currentContentType = 'livre';
