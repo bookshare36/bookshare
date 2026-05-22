@@ -4775,10 +4775,8 @@ function closeChat(){
   document.getElementById('dmcv').style.display='none';
 }
 function sendComm() {
-  // 1. On vérifie qu'on sait sur quel post on commente
   if (typeof currentCommPostId === 'undefined' || !currentCommPostId) return;
 
-  // 2. On vérifie que l'utilisateur est connecté et a écrit quelque chose
   if (typeof requireAuth === 'function' && !requireAuth()) return;
   const user = currentUser;
   if (!user) {
@@ -4788,45 +4786,51 @@ function sendComm() {
 
   const input = document.getElementById('cinput');
   const texte = input ? input.value.trim() : '';
-  if (!texte) return; // Si c'est vide, on ne fait rien
+  if (!texte) return; 
 
-  // 3. On fabrique le petit paquet de données pour le commentaire
+  // 1. ON NETTOIE L'ID ICI ! (On enlève les préfixes)
+  let cleanPostId = currentCommPostId.replace('pbtn_', '').replace('cbtn_', '').replace('commbtn_', '');
+
+  // 2. On fabrique le paquet de données
   const newComm = {
     id: 'c_' + Date.now(),
-    postId: currentCommPostId,
+    postId: cleanPostId, // On utilise l'ID tout propre !
     email: user.email,
     prenom: user.prenom || user.pseudo || 'Anonyme',
     nom: user.nom || '',
     initials: (user.prenom ? user.prenom[0] : '?') + (user.nom ? user.nom[0] : ''),
     avatarBg: user.avatarBg || 'linear-gradient(135deg,var(--amber),var(--gold))',
     texte: texte,
+    text: texte, // <-- La parade anti-undefined est ici
     ts: Date.now()
   };
 
-  // 4. On sauvegarde immédiatement en mémoire locale (Optimistic UI)
+  // 3. Sauvegarde locale (Optimistic UI)
   DB.comments = DB.comments || {};
-  if (!DB.comments[currentCommPostId]) {
-    DB.comments[currentCommPostId] = [];
+  if (!DB.comments[cleanPostId]) {
+    DB.comments[cleanPostId] = [];
   }
-  DB.comments[currentCommPostId].push(newComm);
+  DB.comments[cleanPostId].push(newComm);
   
   if (typeof saveDB === 'function') saveDB();
 
-  // 5. On met à jour l'écran et les compteurs instantanément
-  if (typeof renderComments === 'function') renderComments(currentCommPostId);
+  // 4. Mises à jour à l'écran
+  if (typeof renderComments === 'function') renderComments(cleanPostId);
   
-  const count = DB.comments[currentCommPostId].length;
+  const count = DB.comments[cleanPostId].length;
   const countModal = document.getElementById('comm-count');
   if (countModal) countModal.textContent = '(' + count + ')';
   
   document.querySelectorAll('[id^="commc_"]').forEach(el => {
-    if (el.id === 'commc_' + currentCommPostId) el.textContent = count;
+    // On met à jour le compteur qui correspond à l'ID propre
+    if (el.id === 'commc_' + cleanPostId || el.id === 'commc_pbtn_' + cleanPostId) {
+      el.textContent = count;
+    }
   });
 
-  // On vide le champ de texte pour faire propre
   if (input) input.value = '';
 
-  // 6. Le plus important : on l'envoie pour de bon à Neon ! 🚀
+  // 5. Envoi au serveur
   fetch('/.netlify/functions/comments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -4842,6 +4846,7 @@ function sendComm() {
     console.error("Erreur d'envoi du commentaire:", err);
   });
 }
+
 function renderComments(postId){
   const list = document.getElementById('comm-list');
   if(!list) return;
@@ -4855,31 +4860,28 @@ function renderComments(postId){
       <div class="fpav" style="background:${cm.avatarBg||'linear-gradient(135deg,var(--amber),var(--gold))'};color:#1A0A00;flex-shrink:0;">${cm.initials||'?'}</div>
       <div>
         <div style="font-size:12px;font-weight:600;color:var(--txt);margin-bottom:3px;">${cm.prenom} ${cm.nom}</div>
-        <div style="font-size:12px;color:var(--txt);background:var(--card2);padding:9px 11px;border-radius:0 9px 9px 9px;line-height:1.5;">${cm.texte}</div>
-        <div style="font-size:10px;color:var(--txt3);margin-top:3px;">${timeAgo(cm.ts)}</div>
+        <div style="font-size:12px;color:var(--txt);background:var(--card2);padding:9px 11px;border-radius:0 9px 9px 9px;line-height:1.5;">${cm.texte || cm.text || ''}</div>
+        <div style="font-size:10px;color:var(--txt3);margin-top:3px;">${typeof timeAgo === 'function' ? timeAgo(cm.ts) : ''}</div>
       </div>
     </div>
   `).join('');
   list.scrollTop = list.scrollHeight;
-} // <-- J'ai rajouté l'accolade manquante ici !
+}
 
 async function loadCommentsFromNeon(postId) {
   try {
-    const r = await fetch(`/.netlify/functions/comments?postId=${postId}`);
+    let cleanPostId = postId.replace('pbtn_', '').replace('cbtn_', '').replace('commbtn_', '');
+    const r = await fetch('/.netlify/functions/comments?postId=' + cleanPostId);
     const data = await r.json();
     
-    if (data.comments) {
-      // 1. On met à jour la mémoire locale avec les vrais commentaires de Neon
-      DB.comments[postId] = data.comments;
-      saveDB();
+    if (data && Array.isArray(data)) {
+      DB.comments[cleanPostId] = data;
+      if (typeof saveDB === 'function') saveDB();
+      renderComments(cleanPostId);
       
-      // 2. On redessine les commentaires à l'écran
-      renderComments(postId);
-      
-      // 3. On met à jour tous les petits compteurs (bulles) sur le site
-      const count = data.comments.length;
+      const count = data.length;
       document.querySelectorAll('[id^="commc_"]').forEach(el => {
-        if (el.id === 'commc_' + postId) el.textContent = count;
+        if (el.id === 'commc_' + cleanPostId || el.id === 'commc_pbtn_' + cleanPostId) el.textContent = count;
       });
       const modalHeader = document.getElementById('comm-count');
       if (modalHeader) modalHeader.textContent = '(' + count + ')';
@@ -4888,7 +4890,6 @@ async function loadCommentsFromNeon(postId) {
     console.warn('Erreur lors du chargement des commentaires Neon:', e.message);
   }
 }
-
 
 // ═══ TYPE DE CONTENU ═══
 let currentContentType = 'livre';
