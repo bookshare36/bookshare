@@ -1,11 +1,8 @@
 const { Pool } = require('pg');
 
-// Connexion à ta base de données Neon
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 exports.handler = async (event, context) => {
@@ -15,80 +12,56 @@ exports.handler = async (event, context) => {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
   };
 
-  // 1. Réponse de politesse pour le navigateur (CORS)
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
 
-  // 2. RÉCEPTION D'UN NOUVEAU COMMENTAIRE (POST)
+  // POST — sauvegarder un commentaire
   if (event.httpMethod === 'POST') {
     try {
       const data = JSON.parse(event.body);
       const { id, postId, email, prenom, nom, initials, avatarBg, texte, ts } = data;
 
       if (!postId || !texte || !email) {
-        return { 
-          statusCode: 400, 
-          headers, 
-          body: JSON.stringify({ error: 'Données manquantes' }) 
-        };
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Données manquantes' }) };
       }
 
-      // ON UTILISE post_id AVEC LE TIRET ICI !
       const query = `
         INSERT INTO comments (id, post_id, email, prenom, nom, initials, avatarbg, texte, ts)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *;
       `;
+      // avatarBg (frontend) → avatarbg (colonne Neon, tout minuscule)
       const values = [id, postId, email, prenom, nom, initials, avatarBg, texte, ts];
 
       const result = await pool.query(query, values);
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, comment: result.rows[0] })
-      };
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, comment: result.rows[0] }) };
 
     } catch (error) {
       console.error("Erreur lors de la sauvegarde du commentaire:", error);
-      return { 
-        statusCode: 500, 
-        headers, 
-        body: JSON.stringify({ error: "Impossible de sauvegarder dans la base de données" }) 
-      };
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
     }
   }
 
-  // 3. LECTURE DES COMMENTAIRES (GET)
+  // GET — lire les commentaires d'un post
   if (event.httpMethod === 'GET') {
     try {
-      const postId = event.queryStringParameters.postId;
+      const postId = event.queryStringParameters?.postId;
       if (!postId) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId manquant' }) };
       }
 
-      // ON UTILISE post_id ICI AUSSI !
-      const result = await pool.query('SELECT * FROM comments WHERE post_id = $1 ORDER BY ts ASC', [postId]);
-      
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify(result.rows)
-      };
+      const result = await pool.query(
+        'SELECT * FROM comments WHERE post_id = $1 ORDER BY ts ASC',
+        [postId]
+      );
+      return { statusCode: 200, headers, body: JSON.stringify(result.rows) };
+
     } catch (error) {
       console.error("Erreur de lecture:", error);
-      return { 
-        statusCode: 500, 
-        headers, 
-        body: JSON.stringify({ error: "Impossible de lire la base de données" }) 
-      };
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
     }
   }
 
-  return { 
-    statusCode: 405, 
-    headers, 
-    body: JSON.stringify({ error: 'Méthode non autorisée' }) 
-  };
+  return { statusCode: 405, headers, body: JSON.stringify({ error: 'Méthode non autorisée' }) };
 };
