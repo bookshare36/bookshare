@@ -2,9 +2,7 @@ const { Pool } = require('pg');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 exports.handler = async (event, context) => {
@@ -18,7 +16,7 @@ exports.handler = async (event, context) => {
     return { statusCode: 200, headers, body: '' };
   }
 
-  // 1. POST : AJOUTER OU ENLEVER UN LIKE
+  // POST : ajouter ou enlever un like
   if (event.httpMethod === 'POST') {
     try {
       const data = JSON.parse(event.body);
@@ -28,22 +26,20 @@ exports.handler = async (event, context) => {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Données manquantes' }) };
       }
 
-      // ON UTILISE post_id AVEC LE TIRET DU BAS !
-      const checkResult = await pool.query('SELECT * FROM likes WHERE post_id = $1 AND email = $2', [postId, email]);
+      const checkResult = await pool.query(
+        'SELECT * FROM likes WHERE post_id = $1 AND email = $2',
+        [postId, email]
+      );
 
       let isNowLiked = false;
-
       if (checkResult.rows.length > 0) {
-        // Enlever le like
         await pool.query('DELETE FROM likes WHERE post_id = $1 AND email = $2', [postId, email]);
         isNowLiked = false;
       } else {
-        // Ajouter le like
         await pool.query('INSERT INTO likes (post_id, email) VALUES ($1, $2)', [postId, email]);
         isNowLiked = true;
       }
 
-      // Recompter
       const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE post_id = $1', [postId]);
       const newCount = parseInt(countResult.rows[0].count, 10);
 
@@ -55,27 +51,44 @@ exports.handler = async (event, context) => {
 
     } catch (error) {
       console.error("Erreur de traitement du like:", error);
-      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Impossible de sauvegarder le like' }) };
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
     }
   }
 
-  // 2. GET : LIRE LES LIKES AU CHARGEMENT DE LA PAGE
+  // GET : deux modes
+  // 1. ?postId=X&userEmail=Y  → état d'un seul post
+  // 2. ?userEmail=Y           → tous les postIds likés par cet utilisateur
   if (event.httpMethod === 'GET') {
     try {
-      const postId = event.queryStringParameters.postId;
-      const userEmail = event.queryStringParameters.userEmail;
+      const { postId, userEmail } = event.queryStringParameters || {};
 
+      // Mode 2 : tous les likes d'un utilisateur
+      if (!postId && userEmail) {
+        const result = await pool.query(
+          'SELECT post_id FROM likes WHERE email = $1',
+          [userEmail]
+        );
+        const likedIds = result.rows.map(r => r.post_id);
+        return { statusCode: 200, headers, body: JSON.stringify({ likedIds }) };
+      }
+
+      // Mode 1 : état d'un post précis
       if (!postId) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'postId manquant' }) };
       }
 
-      // ON UTILISE post_id ICI AUSSI
-      const countResult = await pool.query('SELECT COUNT(*) FROM likes WHERE post_id = $1', [postId]);
+      const countResult = await pool.query(
+        'SELECT COUNT(*) FROM likes WHERE post_id = $1',
+        [postId]
+      );
       const totalCount = parseInt(countResult.rows[0].count, 10);
 
       let userHasLiked = false;
       if (userEmail) {
-        const checkResult = await pool.query('SELECT * FROM likes WHERE post_id = $1 AND email = $2', [postId, userEmail]);
+        const checkResult = await pool.query(
+          'SELECT 1 FROM likes WHERE post_id = $1 AND email = $2',
+          [postId, userEmail]
+        );
         userHasLiked = checkResult.rows.length > 0;
       }
 
@@ -87,7 +100,7 @@ exports.handler = async (event, context) => {
 
     } catch (error) {
       console.error("Erreur de lecture des likes:", error);
-      return { statusCode: 500, headers, body: JSON.stringify({ error: 'Erreur de lecture serveur' }) };
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
     }
   }
 
