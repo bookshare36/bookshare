@@ -1,77 +1,108 @@
 const { Pool } = require('pg');
 
-// Connexion à ta base Neon
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
-exports.handler = async (event, context) => {
+exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS'
   };
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
-  }
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
-  // 1. AFFICHER TOUS LES POSTS (GET)
+  // GET — tous les posts
   if (event.httpMethod === 'GET') {
     try {
-      // On récupère tous les posts du plus récent au plus ancien
       const result = await pool.query('SELECT * FROM posts ORDER BY ts DESC');
-      return { 
-        statusCode: 200, 
-        headers, 
-        body: JSON.stringify(result.rows) 
-      };
+      // Normaliser les colonnes pour le frontend
+      const posts = result.rows.map(p => ({
+        id:           p.id,
+        email:        p.email,
+        prenom:       p.prenom,
+        nom:          p.nom,
+        initials:     p.initials,
+        avatarBg:     p.avatarbg,
+        photo:        p.photo || null,
+        texte:        p.texte,
+        titre:        p.titre || '',
+        type:         p.type || p.contenttype || 'livre',
+        typeBadge:    p.typebadge || '',
+        meta:         p.meta || '',
+        ville:        p.ville || '',
+        visibility:   p.visibility || '🌍 Public',
+        categorie:    p.categorie || '',
+        ts:           parseInt(p.ts) || Date.now(),
+        eu:           parseInt(p.eu) || 0,
+      }));
+      return { statusCode: 200, headers, body: JSON.stringify({ posts }) };
     } catch (error) {
-      console.error("Erreur de lecture des posts:", error);
-      return { statusCode: 500, headers, body: JSON.stringify({ error: "Impossible de lire les posts" }) };
+      console.error('Erreur lecture posts:', error);
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
     }
   }
 
-  // 2. PUBLIER UN NOUVEAU POST OU UN SIGNALEMENT (POST)
+  // POST — créer un post ou signalement
   if (event.httpMethod === 'POST') {
     try {
       const data = JSON.parse(event.body);
 
-      // Si c'est un signalement (bouton "Signaler" qu'on a vu dans ton code)
+      // Signalement
       if (data.action === 'report') {
-        console.log(`Signalement reçu pour le post ${data.postId} par ${data.email}`);
-        // Ici, on répond juste que c'est bien reçu pour rassurer le navigateur
+        console.log(`Signalement post ${data.postId} par ${data.email}`);
         return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
       }
 
-      // Sinon, c'est la création d'un vrai Post
-      const { id, email, prenom, nom, initials, avatarBg, texte, ts, contentType } = data;
+      // Création d'un post
+      const {
+        id, email, prenom, nom, initials, avatarBg, photo,
+        texte, titre, type, typeBadge, meta, ville,
+        visibility, categorie, ts
+      } = data;
 
       if (!id || !email || !texte) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Données manquantes pour le post' }) };
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Données manquantes' }) };
       }
 
       const query = `
-        INSERT INTO posts (id, email, prenom, nom, initials, avatarbg, texte, ts, contenttype, eu)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0)
+        INSERT INTO posts 
+          (id, email, prenom, nom, initials, avatarbg, photo,
+           texte, titre, type, typebadge, meta, ville,
+           visibility, categorie, ts, eu)
+        VALUES 
+          ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,0)
         RETURNING *;
       `;
-      const values = [id, email, prenom, nom, initials, avatarBg, texte, ts, contentType || 'text'];
-      
-      const result = await pool.query(query, values);
+      const values = [
+        id, email, prenom||'', nom||'', initials||'', avatarBg||'', photo||null,
+        texte, titre||'', type||'livre', typeBadge||'', meta||'', ville||'',
+        visibility||'🌍 Public', categorie||'', ts||Date.now()
+      ];
 
-      return { 
-        statusCode: 200, 
-        headers, 
-        body: JSON.stringify({ success: true, post: result.rows[0] }) 
-      };
+      const result = await pool.query(query, values);
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true, post: result.rows[0] }) };
 
     } catch (error) {
-      console.error("Erreur de sauvegarde du post:", error);
-      return { statusCode: 500, headers, body: JSON.stringify({ error: "Impossible de sauvegarder le post" }) };
+      console.error('Erreur sauvegarde post:', error);
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
+    }
+  }
+
+  // DELETE — supprimer un post
+  if (event.httpMethod === 'DELETE') {
+    try {
+      const { id, email } = JSON.parse(event.body);
+      if (!id || !email) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'id et email requis' }) };
+      }
+      await pool.query('DELETE FROM posts WHERE id=$1 AND email=$2', [id, email]);
+      return { statusCode: 200, headers, body: JSON.stringify({ success: true }) };
+    } catch (error) {
+      console.error('Erreur suppression post:', error);
+      return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
     }
   }
 
